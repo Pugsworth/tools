@@ -25,6 +25,10 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
+      - name: Type Check
+        run: npm run type-check
+        continue-on-error: true
+
       - name: Build
         run: npm run build
 
