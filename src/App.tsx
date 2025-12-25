@@ -1074,11 +1074,14 @@ const App = () => {
       )}
 
       {/* --- Sidebar / Tools --- */}
-      <div className="w-20 bg-slate-900 border-r border-slate-800 flex flex-col items-center py-6 gap-4 z-20 shadow-xl relative">
-        <div className="relative mb-4">
-          <button onClick={() => setMenuOpen(!menuOpen)} className="bg-gradient-to-br from-indigo-500 to-purple-600 p-2 rounded-xl shadow-lg hover:brightness-110 transition-all">
+      <div className="w-16 bg-slate-900 border-r border-slate-800 flex flex-col items-center py-6 gap-4 z-20 shadow-xl relative">
+        <div className="relative mb-4 group">
+          <button onClick={() => setMenuOpen(!menuOpen)} className="bg-gradient-to-br from-indigo-500 to-purple-600 p-2 rounded-xl shadow-lg hover:brightness-110 transition-all cursor-pointer">
             <ImageIcon className="text-white" />
           </button>
+          <span className="absolute left-full ml-3 px-2 py-1 bg-slate-900 text-xs text-white rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-xl border border-slate-700 flex flex-col items-start">
+            <span className="font-semibold">Open Menu</span>
+          </span>
           {menuOpen && (
             <div className="absolute top-14 left-0 w-56 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl p-2 z-50 flex flex-col gap-1 animate-in fade-in slide-in-from-top-2">
               <button onClick={() => { fileInputRef.current.click(); }} className="flex items-center gap-2 p-2 hover:bg-slate-700 rounded text-sm text-left"><FileUp size={16} /> New / Upload</button>

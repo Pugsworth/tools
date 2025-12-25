@@ -1,7 +1,7 @@
 export const ToolButton = ({ active, icon: Icon, onClick, label, shortcut }: { active: boolean, icon: any, onClick: () => void, label: string, shortcut: string }) => (
     <button
         onClick={onClick}
-        className={`p-3 rounded-xl flex items-center justify-center transition-all duration-200 group relative ${active
+        className={`p-3 rounded-xl flex items-center justify-center transition-all duration-200 group relative cursor-pointer ${active
             ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20'
             : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
             }`}
