@@ -1,0 +1,36 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - master
+      - 'tool/*'
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine Destination
+        id: dest
+        run: |
+          if [[ "${{ github.ref_name }}" == "master" ]]; then
+            echo "folder=." >> $GITHUB_OUTPUT
+          else
+            # Extract tool name from branch name (e.g., tool/my-tool -> my-tool)
+            TOOL_NAME=$(echo "${{ github.ref_name }}" | sed 's/tool\///')
+            echo "folder=$TOOL_NAME" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: .
+          target-folder: ${{ steps.dest.outputs.folder }}
+          branch: gh-pages
+          clean: ${{ github.ref_name == 'master' }} # Only clean if deploying the main landing page
