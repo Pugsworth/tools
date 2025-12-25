@@ -1,4 +1,4 @@
-import { rotatePoint, normalizeRect, pointInPolygon } from "./geometry";
+import { rotatePoint, normalizeRect, pointInPolygon } from './geometry';
 
 type Ctx = CanvasRenderingContext2D;
 

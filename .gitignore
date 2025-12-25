@@ -7,6 +7,9 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# TypeScript Debugging Files
+tsc_errors*.*
+
 node_modules
 dist
 dist-ssr

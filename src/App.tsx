@@ -137,13 +137,13 @@ const App = () => {
   const updateShape = (id: OpaqueID, changes: any) => {
     setShapes(prev => prev.map(s => {
       if (s.id !== id) return s;
-      if (changes.samples && changes.samples !== s.samples) {
+      if (changes.samples && (s.type === 'line' || s.type === 'curve')) {
         const newRadii: number[] = [...(s.radii || [])];
         while (newRadii.length < changes.samples) newRadii.push(s.thickness / 2);
         return { ...s, ...changes, radii: newRadii.slice(0, changes.samples) };
       }
-      if (changes.thickness && !s.variableRadii && !changes.variableRadii) {
-        const newRadii: number[] = Array(s.samples).fill(changes.thickness / 2);
+      if (changes.thickness && (s.type === 'line' || s.type === 'curve') && !s.variableRadii && !changes.variableRadii) {
+        const newRadii: number[] = Array(changes.samples || s.samples).fill(changes.thickness / 2);
         return { ...s, ...changes, radii: newRadii };
       }
       return { ...s, ...changes };
@@ -368,7 +368,7 @@ const App = () => {
 
   // --- Interaction Handlers ---
 
-  const getMousePos = (e: MouseEvent) => {
+  const getMousePos = (e: MouseEvent | React.MouseEvent) => {
     if (!containerRef.current) return { x: 0, y: 0 };
     const rect = containerRef.current.getBoundingClientRect();
     const clientX = e.clientX - rect.left;
@@ -379,9 +379,9 @@ const App = () => {
     };
   };
 
-  const handleWheel = (e: WheelEvent) => {
+  const handleWheel = (e: React.WheelEvent) => {
     if (!image || !containerRef.current) return;
-    e.preventDefault();
+    // e.preventDefault(); // React events don't have preventDefault in this context usually, or it's handled differently
     const zoomIntensity = 0.1;
     const rect = containerRef.current.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
@@ -397,7 +397,7 @@ const App = () => {
     setPan({ x: newPanX, y: newPanY });
   };
 
-  const handleMouseDown = (e: MouseEvent) => {
+  const handleMouseDown = (e: React.MouseEvent) => {
     if (!image || !containerRef.current) return;
     if (e.button === MouseButton.Middle) {
       setIsPanning(true);
@@ -416,6 +416,7 @@ const App = () => {
         else if (s.type === 'line') { cx = (s.x1 + s.x2) / 2; cy = (s.y1 + s.y2) / 2; }
         else if (s.type === 'curve') { cx = s.p1.x; cy = s.p1.y; }
         else if (s.type === 'brush') { cx = s.points[0].x; cy = s.points[0].y; }
+        else return false;
         return distance({ x: cx, y: cy }, pos) < 50 / zoom;
       });
       if (clickedShape) {
@@ -441,9 +442,11 @@ const App = () => {
       setActiveHandle(target.dataset.handle);
       if (target.dataset.handle === 'move') {
         const shape = shapes.find(s => s.id === selectedShapeId);
-        if (shape.type === 'circle') setDragOffset({ x: pos.x - shape.x, y: pos.y - shape.y });
-        else if (shape.type === 'rect') setDragOffset({ x: pos.x - shape.x, y: pos.y - shape.y });
-        else if (shape.type === 'brush') setDragOffset({ x: pos.x - shape.points[0].x, y: pos.y - shape.points[0].y });
+        if (shape) {
+          if (shape.type === 'circle') setDragOffset({ x: pos.x - shape.x, y: pos.y - shape.y });
+          else if (shape.type === 'rect') setDragOffset({ x: pos.x - shape.x, y: pos.y - shape.y });
+          else if (shape.type === 'brush') setDragOffset({ x: pos.x - shape.points[0].x, y: pos.y - shape.points[0].y });
+        }
       }
       if (target.dataset.handle.startsWith('rad-')) setActiveHandle(target.dataset.handle);
       return;
@@ -456,11 +459,13 @@ const App = () => {
         setIsDragging(true);
         setActiveHandle('move');
         const shape = shapes.find(s => s.id === id);
-        if (shape.type === 'circle') setDragOffset({ x: pos.x - shape.x, y: pos.y - shape.y });
-        else if (shape.type === 'rect') setDragOffset({ x: pos.x - shape.x, y: pos.y - shape.y });
-        else if (shape.type === 'line') setDragOffset({ x: pos.x - shape.x1, y: pos.y - shape.y1 });
-        else if (shape.type === 'curve') setDragOffset({ x: pos.x - shape.p0.x, y: pos.y - shape.p0.y });
-        else if (shape.type === 'brush') setDragOffset({ x: pos.x - shape.points[0].x, y: pos.y - shape.points[0].y });
+        if (shape) {
+          if (shape.type === 'circle') setDragOffset({ x: pos.x - shape.x, y: pos.y - shape.y });
+          else if (shape.type === 'rect') setDragOffset({ x: pos.x - shape.x, y: pos.y - shape.y });
+          else if (shape.type === 'line') setDragOffset({ x: pos.x - shape.x1, y: pos.y - shape.y1 });
+          else if (shape.type === 'curve') setDragOffset({ x: pos.x - shape.p0.x, y: pos.y - shape.p0.y });
+          else if (shape.type === 'brush') setDragOffset({ x: pos.x - shape.points[0].x, y: pos.y - shape.points[0].y });
+        }
         return;
       }
     }
@@ -478,8 +483,9 @@ const App = () => {
     }
   };
 
-  const handleMouseMove = (e: MouseEvent) => {
+  const handleMouseMove = (e: React.MouseEvent) => {
     if (isPanning) {
+      if (!dragStart) return;
       const dx = e.clientX - dragStart.x;
       const dy = e.clientY - dragStart.y;
       setPan(prev => ({ x: prev.x + dx, y: prev.y + dy }));
@@ -542,7 +548,7 @@ const App = () => {
           const t = shape.samples > 1 ? idx / (shape.samples - 1) : 0.5;
           center = getQuadraticBezierPoint(t, shape.p0, shape.p1, shape.p2);
         }
-        if (center) {
+        if (center && (shape.type === 'line' || shape.type === 'curve')) {
           const newR = distance(center, pos);
           const newRadii = [...shape.radii];
           newRadii[idx] = newR;
@@ -592,7 +598,7 @@ const App = () => {
     }
   };
 
-  const handleMouseUp = (e: MouseEvent) => {
+  const handleMouseUp = (e: React.MouseEvent) => {
     if (tool === 'link' && linkStartId) {
       const pos = getMousePos(e);
       const endShape = shapes.find(s => {
@@ -603,6 +609,7 @@ const App = () => {
         else if (s.type === 'line') { cx = (s.x1 + s.x2) / 2; cy = (s.y1 + s.y2) / 2; }
         else if (s.type === 'curve') { cx = s.p1.x; cy = s.p1.y; }
         else if (s.type === 'brush') { cx = s.points[0].x; cy = s.points[0].y; }
+        else return false;
         return distance({ x: cx, y: cy }, pos) < 50 / zoom;
       });
       if (endShape) {
@@ -616,6 +623,7 @@ const App = () => {
     setIsDragging(false);
     setIsPanning(false);
     setActiveHandle(null);
+    setDragStart(null);
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -753,8 +761,8 @@ const App = () => {
   useEffect(() => { const handlePaste = (e: ClipboardEvent) => { const items = e.clipboardData.items; for (let i = 0; i < items.length; i++) { if (items[i].type.indexOf('image') !== -1) { const blob = items[i].getAsFile(); processFile(blob); break; } } }; window.addEventListener('paste', handlePaste); return () => window.removeEventListener('paste', handlePaste); }, []);
 
   // --- Palette Calculation ---
-  const { computedShapes, customPalette } = useMemo(() => {
-    if (!image || !canvasRef.current) return { computedShapes: shapes, customPalette: [] };
+  const { customPalette } = useMemo(() => {
+    if (!image || !canvasRef.current) return { customPalette: [] };
     try {
       const ctx = canvasRef.current.getContext('2d') as CanvasRenderingContext2D;
       const processed = shapes.map(shape => {
@@ -838,8 +846,8 @@ const App = () => {
           }
         }
       });
-      return { computedShapes: processed, customPalette: paletteItems };
-    } catch (e) { return { computedShapes: shapes, customPalette: [] }; }
+      return { customPalette: paletteItems };
+    } catch (e) { return { customPalette: [] }; }
   }, [shapes, image, canvasVersion, links]);
 
   const globalPalette = useMemo(() => {
@@ -872,13 +880,13 @@ const App = () => {
     const strokeColor = isSelected ? '#3b82f6' : 'white';
     const strokeWidth = 2 / zoom;
     const handleR = 6 / zoom;
-    const computed = computedShapes.find((s: Shape) => s.id === shape.id);
 
-    const renderVariableRadiiHandles = (points: Point[]) => {
+    const renderVariableRadiiHandles = (points: Point[], s: Shape) => {
+      if (s.type !== 'line' && s.type !== 'curve') return null;
       return points.map((p: Point, i: number) => (
         <React.Fragment key={i}>
-          <line x1={p.x} y1={p.y} x2={p.x + (shape.radii?.[i] || shape.thickness / 2)} y2={p.y} stroke="#3b82f6" strokeWidth={1 / zoom} strokeDasharray="2,2" />
-          <circle cx={p.x + (shape.radii?.[i] || shape.thickness / 2)} cy={p.y} r={handleR} fill="#fff" stroke="#3b82f6" strokeWidth={1 / zoom} data-handle={`rad-${i}`} className="cursor-ew-resize" />
+          <line x1={p.x} y1={p.y} x2={p.x + (s.radii?.[i] || s.thickness / 2)} y2={p.y} stroke="#3b82f6" strokeWidth={1 / zoom} strokeDasharray="2,2" />
+          <circle cx={p.x + (s.radii?.[i] || s.thickness / 2)} cy={p.y} r={handleR} fill="#fff" stroke="#3b82f6" strokeWidth={1 / zoom} data-handle={`rad-${i}`} className="cursor-ew-resize" />
         </React.Fragment>
       ));
     };
@@ -968,7 +976,7 @@ const App = () => {
                   <circle cx={shape.p2.x} cy={shape.p2.y} r={handleR} fill="#3b82f6" data-handle="p2" className="cursor-move" />
                 </>
               )}
-              {shape.variableRadii && renderVariableRadiiHandles(points)}
+              {shape.variableRadii && renderVariableRadiiHandles(points, shape)}
             </>
           )}
         </g>
@@ -1116,37 +1124,46 @@ const App = () => {
             {selectedShapeId && (
               <div className="flex items-center gap-4 bg-slate-800 px-4 py-1.5 rounded-full border border-slate-700 animate-in fade-in slide-in-from-top-4">
                 <Settings size={14} className="text-slate-400" />
-                {(shapes.find((s: Shape) => s.id === selectedShapeId)?.type === 'line' || shapes.find((s: Shape) => s.id === selectedShapeId)?.type === 'curve') && (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400">Samples:</span>
-                      <input type="range" min="2" max="20" value={shapes.find((s: Shape) => s.id === selectedShapeId)?.samples} onChange={(e) => updateShape(selectedShapeId, { samples: parseInt(e.target.value) })} className="w-20 accent-blue-500" />
-                      <span className="text-xs font-mono w-4">{shapes.find((s: Shape) => s.id === selectedShapeId)?.samples}</span>
-                    </div>
-                    <div className="w-[1px] h-4 bg-slate-600"></div>
-                    <label className="flex items-center gap-2 cursor-pointer" title="Merge all samples into one color">
-                      <span className="text-xs text-slate-400">Merge</span>
-                      <input type="checkbox" checked={shapes.find((s: Shape) => s.id === selectedShapeId)?.mergeColors || false} onChange={(e) => updateShape(selectedShapeId, { mergeColors: e.target.checked })} className="accent-blue-500" />
-                    </label>
-                    <div className="w-[1px] h-4 bg-slate-600"></div>
-                    <label className="flex items-center gap-2 cursor-pointer" title="Variable Radii">
-                      <span className="text-xs text-slate-400">Var.R</span>
-                      <input type="checkbox" checked={shapes.find((s: Shape) => s.id === selectedShapeId)?.variableRadii || false} onChange={(e) => updateShape(selectedShapeId, { variableRadii: e.target.checked })} className="accent-blue-500" />
-                    </label>
-                    {!shapes.find((s: Shape) => s.id === selectedShapeId)?.variableRadii && (
+                {(() => {
+                  const shape = shapes.find(s => s.id === selectedShapeId);
+                  if (!shape) return null;
+                  if (shape.type === 'line' || shape.type === 'curve') {
+                    return (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400">Samples:</span>
+                          <input type="range" min="2" max="20" value={shape.samples} onChange={(e) => updateShape(selectedShapeId, { samples: parseInt(e.target.value) })} className="w-20 accent-blue-500" />
+                          <span className="text-xs font-mono w-4">{shape.samples}</span>
+                        </div>
+                        <div className="w-[1px] h-4 bg-slate-600"></div>
+                        <label className="flex items-center gap-2 cursor-pointer" title="Merge all samples into one color">
+                          <span className="text-xs text-slate-400">Merge</span>
+                          <input type="checkbox" checked={shape.mergeColors || false} onChange={(e) => updateShape(selectedShapeId, { mergeColors: e.target.checked })} className="accent-blue-500" />
+                        </label>
+                        <div className="w-[1px] h-4 bg-slate-600"></div>
+                        <label className="flex items-center gap-2 cursor-pointer" title="Variable Radii">
+                          <span className="text-xs text-slate-400">Var.R</span>
+                          <input type="checkbox" checked={shape.variableRadii || false} onChange={(e) => updateShape(selectedShapeId, { variableRadii: e.target.checked })} className="accent-blue-500" />
+                        </label>
+                        {!shape.variableRadii && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-400">Size:</span>
+                            <input type="range" min="1" max="50" value={shape.thickness} onChange={(e) => updateShape(selectedShapeId, { thickness: parseInt(e.target.value) })} className="w-20 accent-blue-500" />
+                          </div>
+                        )}
+                      </>
+                    );
+                  }
+                  if (shape.type === 'rect') {
+                    return (
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-400">Size:</span>
-                        <input type="range" min="1" max="50" value={shapes.find((s: Shape) => s.id === selectedShapeId)?.thickness} onChange={(e) => updateShape(selectedShapeId, { thickness: parseInt(e.target.value) })} className="w-20 accent-blue-500" />
+                        <span className="text-xs text-slate-400">Rot:</span>
+                        <input type="number" className="w-12 bg-slate-900 border border-slate-700 rounded px-1 text-xs" value={Math.round(shape.rotation || 0)} onChange={(e) => updateShape(selectedShapeId, { rotation: parseFloat(e.target.value) })} />
                       </div>
-                    )}
-                  </>
-                )}
-                {shapes.find((s: Shape) => s.id === selectedShapeId)?.type === 'rect' && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400">Rot:</span>
-                    <input type="number" className="w-12 bg-slate-900 border border-slate-700 rounded px-1 text-xs" value={Math.round(shapes.find((s: Shape) => s.id === selectedShapeId)?.rotation || 0)} onChange={(e) => updateShape(selectedShapeId, { rotation: parseFloat(e.target.value) })} />
-                  </div>
-                )}
+                    );
+                  }
+                  return null;
+                })()}
                 <div className="w-[1px] h-4 bg-slate-600 mx-1"></div>
                 <button onClick={unlinkSelected} className="text-orange-400 hover:text-orange-300" title="Unlink All"><Unlink size={16} /></button>
                 <button onClick={deleteSelected} className="text-red-400 hover:text-red-300" title="Delete (Del/Backspace)"><Trash2 size={16} /></button>
@@ -1194,7 +1211,8 @@ const App = () => {
                       if (s.type === 'rect') return s.x + s.w / 2;
                       if (s.type === 'line') return (s.x1 + s.x2) / 2;
                       if (s.type === 'curve') return s.p1.x;
-                      return s.x || 0;
+                      if (s.type === 'brush') return s.points[0].x;
+                      return 0;
                     })()}
                     y1={(() => {
                       const s = shapes.find((sh: Shape) => sh.id === linkStartId);
@@ -1203,7 +1221,8 @@ const App = () => {
                       if (s.type === 'rect') return s.y + s.h / 2;
                       if (s.type === 'line') return (s.y1 + s.y2) / 2;
                       if (s.type === 'curve') return s.p1.y;
-                      return s.y || 0;
+                      if (s.type === 'brush') return s.points[0].y;
+                      return 0;
                     })()}
                     x2={linkCurrentPos.x} y2={linkCurrentPos.y} stroke="#f59e0b" strokeWidth={2 / zoom} strokeDasharray="5,5"
                   />
