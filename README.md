@@ -16,14 +16,14 @@ A collection of web-based tools, each hosted in its own branch and deployed to a
 2.  **Develop your tool**:
     - Create an `index.html` file in the root of the branch.
     - Ensure all links to assets are relative.
-    - Add a "Back to Tools" link: `<a href="../">← Back to Tools</a>`.
+    - Add a "Back to Tools" link: `<a href="../../">← Back to Tools</a>`.
 3.  **Push the branch**:
     ```bash
     git push origin tool/your-tool-name
     ```
 4.  **Update the landing page**:
     - Switch back to the `master` branch.
-    - Add a new card to the `grid` in `index.html` linking to `your-tool-name/`.
+    - Add a new card to the `grid` in `index.html` linking to `tools/your-tool-name/`.
 
 ## Deployment
 
