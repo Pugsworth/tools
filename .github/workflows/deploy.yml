@@ -24,7 +24,7 @@ jobs:
           else
             # Extract tool name from branch name (e.g., tool/my-tool -> my-tool)
             TOOL_NAME=$(echo "${{ github.ref_name }}" | sed 's/tool\///')
-            echo "folder=$TOOL_NAME" >> $GITHUB_OUTPUT
+            echo "folder=tools/$TOOL_NAME" >> $GITHUB_OUTPUT
           fi
 
       - name: Deploy
@@ -33,4 +33,6 @@ jobs:
           folder: .
           target-folder: ${{ steps.dest.outputs.folder }}
           branch: gh-pages
-          clean: ${{ github.ref_name == 'master' }} # Only clean if deploying the main landing page
+          clean: ${{ github.ref_name == 'master' }}
+          clean-exclude: |
+            tools/
