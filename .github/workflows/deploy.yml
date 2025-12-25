@@ -16,22 +16,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Determine Destination
-        id: dest
+      - name: Determine Destination and Build
+        id: build
         run: |
           if [[ "${{ github.ref_name }}" == "master" ]]; then
             echo "folder=." >> $GITHUB_OUTPUT
+            echo "dist=." >> $GITHUB_OUTPUT
           else
-            # Extract tool name from branch name (e.g., tool/my-tool -> my-tool)
-            TOOL_NAME=$(echo "${{ github.ref_name }}" | sed 's/tool\///')
+            TOOL_NAME=$(echo "${{ github.ref_name }}" | sed 's/tool\///;s/template\///')
             echo "folder=tools/$TOOL_NAME" >> $GITHUB_OUTPUT
+            
+            if [ -f "package.json" ]; then
+              echo "Building tool..."
+              npm install
+              # Pass the base path to the build script if it's a Vite app
+              # We use the repo name as well if it's not a custom domain
+              REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+              npm run build -- --base=/$REPO_NAME/tools/$TOOL_NAME/
+              echo "dist=dist" >> $GITHUB_OUTPUT
+            else
+              echo "No package.json found, skipping build."
+              echo "dist=." >> $GITHUB_OUTPUT
+            fi
           fi
 
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          folder: .
-          target-folder: ${{ steps.dest.outputs.folder }}
+          folder: ${{ steps.build.outputs.dist }}
+          target-folder: ${{ steps.build.outputs.folder }}
           branch: gh-pages
           clean: ${{ github.ref_name == 'master' }}
           clean-exclude: |
