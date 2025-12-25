@@ -112,8 +112,8 @@ const App = () => {
 
   const toggleLink = (id1: OpaqueID, id2: OpaqueID) => {
     setLinks(prev => {
-      const exists = prev.find(([id1, id2]) => (id1 === id1 && id2 === id2) || (id1 === id2 && id2 === id1));
-      return exists ? prev.filter(([id1, id2]) => id1 !== exists[0] && id2 !== exists[1]) : [...prev, [id1, id2]];
+      const exists = prev.find(([a, b]) => (a === id1 && b === id2) || (a === id2 && b === id1));
+      return exists ? prev.filter(([a, b]) => a !== exists[0] || b !== exists[1]) : [...prev, [id1, id2]];
     });
     setCanvasVersion(prev => prev + 1);
   };
@@ -404,6 +404,8 @@ const App = () => {
       setDragStart({ x: e.clientX, y: e.clientY });
       return;
     }
+
+    if (e.button !== MouseButton.Left) return;
 
     const target = e.target as HTMLElement;
     const pos = getMousePos(e);
@@ -740,7 +742,7 @@ const App = () => {
       else if (key === 'c') { setTool('circle'); setSelectedShapeId(null); }
       else if (key === 'u') { setTool('curve'); setSelectedShapeId(null); }
       else if (key === 'l') { setTool('line'); setSelectedShapeId(null); }
-      else if (key === 'k') { setTool('link'); setSelectedShapeId(null); }
+      else if (key === 'q') { setTool('link'); setSelectedShapeId(null); }
       else if (key === 'h') { setTool('brush'); setSelectedShapeId(null); }
       else if (key === 'escape') {
         if (debugInfo) setDebugInfo(null);
@@ -1098,7 +1100,7 @@ const App = () => {
         </div>
         <div className="w-10 h-[1px] bg-slate-800 mb-2"></div>
         <ToolButton active={tool === 'select'} icon={MousePointer2} onClick={() => setTool('select')} label="Select/Move" shortcut="S" />
-        <ToolButton active={tool === 'link'} icon={LinkIcon} onClick={() => { setTool('link'); setSelectedShapeId(null); }} label="Link Shapes" shortcut="K" />
+        <ToolButton active={tool === 'link'} icon={LinkIcon} onClick={() => { setTool('link'); setSelectedShapeId(null); }} label="Link Shapes" shortcut="Q" />
         <ToolButton active={tool === 'circle'} icon={CircleIcon} onClick={() => setTool('circle')} label="Circle Sampler" shortcut="C" />
         <ToolButton active={tool === 'rect'} icon={Square} onClick={() => setTool('rect')} label="Rect Sampler" shortcut="R" />
         <ToolButton active={tool === 'line'} icon={Minus} onClick={() => setTool('line')} label="Line Path" shortcut="L" />
