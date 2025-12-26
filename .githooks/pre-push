@@ -1,0 +1,14 @@
+#!/bin/sh
+
+local_branch="$(git rev-parse --abbrev-ref HEAD)"
+
+# Define allowed patterns
+# master, gh-pages, tool/*, fix/*, feat/*
+if echo "$local_branch" | grep -qE "^(master|gh-pages|tool/|fix/|feat/)"; then
+    exit 0
+else
+    echo "Error: Branch name '$local_branch' does not match the allowed pattern."
+    echo "Allowed patterns: master, gh-pages, tool/*, fix/*, feat/*"
+    echo "To bypass this check, use: git push --no-verify"
+    exit 1
+fi
