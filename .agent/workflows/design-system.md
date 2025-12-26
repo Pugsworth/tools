@@ -23,11 +23,12 @@ When creating new tools or components, ALWAYS follow these design guidelines.
 3.  **Components**:
     - **ToolButton**: Use the standard pattern for sidebar buttons:
       ```tsx
-      <button className="p-3 rounded-xl bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white transition-all">
+      <button className="p-3 rounded-xl bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white transition-all cursor-pointer">
         <Icon size={20} />
       </button>
       ```
     - **Modals**: Use `bg-slate-900` with `border-slate-700` and `shadow-2xl`.
+
 
 ## Implementation Steps
 
