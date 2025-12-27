@@ -654,51 +654,56 @@ const App = () => {
   const handleExportImageWithData = () => {
     if (!image || !svgRef.current) return;
     setMenuOpen(false);
-    // 1. Generate Patches
-    const sourceCanvas = document.createElement('canvas');
-    sourceCanvas.width = image.width; sourceCanvas.height = image.height;
-    const sourceCtx = sourceCanvas.getContext('2d') as CanvasRenderingContext2D;
-    sourceCtx.drawImage(image, 0, 0);
-    const patches = shapes.map(shape => {
-      const bounds = getShapeBounds(shape, 10);
-      const x = Math.max(0, bounds.x), y = Math.max(0, bounds.y);
-      const w = Math.min(image.width - x, bounds.w), h = Math.min(image.height - y, bounds.h);
-      if (w <= 0 || h <= 0) return null;
-      const patchData = sourceCtx.getImageData(x, y, w, h) as ImageData;
-      const pCanvas = document.createElement('canvas');
-      pCanvas.width = w; pCanvas.height = h;
-      pCanvas.getContext('2d')?.putImageData(patchData, 0, 0);
-      return { x, y, data: pCanvas.toDataURL('image/png') };
-    }).filter(Boolean);
+    setSelectedShapeId(null);
 
-    // 2. Prepare Visual
-    const canvas = document.createElement('canvas');
-    canvas.width = image.width; canvas.height = image.height;
-    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
-    ctx.drawImage(image, 0, 0);
+    // Allow render cycle to complete clearing selection
+    setTimeout(() => {
+      // 1. Generate Patches
+      const sourceCanvas = document.createElement('canvas');
+      sourceCanvas.width = image.width; sourceCanvas.height = image.height;
+      const sourceCtx = sourceCanvas.getContext('2d') as CanvasRenderingContext2D;
+      sourceCtx.drawImage(image, 0, 0);
+      const patches = shapes.map(shape => {
+        const bounds = getShapeBounds(shape, 10);
+        const x = Math.max(0, bounds.x), y = Math.max(0, bounds.y);
+        const w = Math.min(image.width - x, bounds.w), h = Math.min(image.height - y, bounds.h);
+        if (w <= 0 || h <= 0) return null;
+        const patchData = sourceCtx.getImageData(x, y, w, h) as ImageData;
+        const pCanvas = document.createElement('canvas');
+        pCanvas.width = w; pCanvas.height = h;
+        pCanvas.getContext('2d')?.putImageData(patchData, 0, 0);
+        return { x, y, data: pCanvas.toDataURL('image/png') };
+      }).filter(Boolean);
 
-    const svgClone = svgRef.current.cloneNode(true) as SVGElement;
-    svgClone.setAttribute("width", image.width.toString());
-    svgClone.setAttribute("height", image.height.toString());
-    svgClone.setAttribute("viewBox", `0 0 ${image.width.toString()} ${image.height.toString()}`);
-    const gizmos = svgClone.querySelectorAll('[data-handle], .cursor-move, .cursor-ew-resize, .cursor-ns-resize, .cursor-nwse-resize, [stroke-dasharray="2,2"]');
-    gizmos.forEach(el => el.remove());
-    const svgString = new XMLSerializer().serializeToString(svgClone);
-    const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(svgBlob);
-    const svgImg = new Image();
-    svgImg.onload = () => {
-      ctx.drawImage(svgImg, 0, 0);
-      URL.revokeObjectURL(url);
-      canvas.toBlob((blob: Blob | null) => {
-        // TODO: Error handling
-        if (!blob) return;
-        const json = JSON.stringify({ shapes, links, patches, version: 1, imageData: { url: imageSource?.type === 'url' ? imageSource.url : null, width: imageSize.w, height: imageSize.h, aspectRatio: imageSize.w / imageSize.h } });
-        const finalBlob = new Blob([blob, SEPARATOR, json], { type: 'image/png' });
-        downloadFile(finalBlob, 'smart-image-export.png');
-      }, 'image/png');
-    };
-    svgImg.src = url;
+      // 2. Prepare Visual
+      const canvas = document.createElement('canvas');
+      canvas.width = image.width; canvas.height = image.height;
+      const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+      ctx.drawImage(image, 0, 0);
+
+      const svgClone = svgRef.current!.cloneNode(true) as SVGElement;
+      svgClone.setAttribute("width", image.width.toString());
+      svgClone.setAttribute("height", image.height.toString());
+      svgClone.setAttribute("viewBox", `0 0 ${image.width.toString()} ${image.height.toString()}`);
+      const gizmos = svgClone.querySelectorAll('[data-handle], [data-link], .cursor-move, .cursor-ew-resize, .cursor-ns-resize, .cursor-nwse-resize, [stroke-dasharray="2,2"]');
+      gizmos.forEach(el => el.remove());
+      const svgString = new XMLSerializer().serializeToString(svgClone);
+      const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+      const svgImg = new Image();
+      svgImg.onload = () => {
+        ctx.drawImage(svgImg, 0, 0);
+        URL.revokeObjectURL(url);
+        canvas.toBlob((blob: Blob | null) => {
+          // TODO: Error handling
+          if (!blob) return;
+          const json = JSON.stringify({ shapes, links, patches, version: 1, imageData: { url: imageSource?.type === 'url' ? imageSource.url : null, width: imageSize.w, height: imageSize.h, aspectRatio: imageSize.w / imageSize.h } });
+          const finalBlob = new Blob([blob, SEPARATOR, json], { type: 'image/png' });
+          downloadFile(finalBlob, 'smart-image-export.png');
+        }, 'image/png');
+      };
+      svgImg.src = url;
+    }, 50);
   };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -767,7 +772,7 @@ const App = () => {
     if (!image || !canvasRef.current) return { customPalette: [] };
     try {
       const ctx = canvasRef.current.getContext('2d') as CanvasRenderingContext2D;
-      const processed = shapes.map(shape => {
+      const processed = shapes.map((shape: Shape) => {
         let samples: any[] = [];
         if (shape.type === 'circle') {
           samples = [getAverageColorInCircle(ctx, shape.x, shape.y, shape.r)];
@@ -842,7 +847,7 @@ const App = () => {
           if (cT > 0) paletteItems.push({ r: Math.round(rT / cT), g: Math.round(gT / cT), b: Math.round(bT / cT), shapeIds: group.shapes, isGroup: true });
         } else {
           const shapeId = group.shapes[0];
-          const s = processed.find(p => p.id === shapeId);
+          const s: Shape = processed.find((p: Shape) => p.id === shapeId);
           if (s && s.rawSamples) {
             s.rawSamples.forEach((sam: any) => { paletteItems.push({ ...sam, shapeIds: [shapeId] }); });
           }
@@ -874,7 +879,7 @@ const App = () => {
       else if (s2.type === 'line') { c2.x = (s2.x1 + s2.x2) / 2; c2.y = (s2.y1 + s2.y2) / 2; }
       else if (s2.type === 'curve') { c2.x = s2.p1.x; c2.y = s2.p1.y; }
       else if (s2.type === 'brush') { c2.x = s2.points[0].x; c2.y = s2.points[0].y; }
-      return <line key={idx} x1={c1.x} y1={c1.y} x2={c2.x} y2={c2.y} stroke="#f59e0b" strokeWidth={1 / zoom} strokeDasharray="4,4" />;
+      return <line key={idx} x1={c1.x} y1={c1.y} x2={c2.x} y2={c2.y} stroke="#f59e0b" strokeWidth={1 / zoom} strokeDasharray="4,4" data-link="true" />;
     });
   };
 
