@@ -2,7 +2,9 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: ["tool/*"]
+    branches:
+      - master
+      - 'tool/*'
 
 permissions:
   contents: write
@@ -31,10 +33,22 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Calculate Destination
+        id: dest
+        run: |
+          if [ "${{ github.ref_name }}" == "master" ]; then
+            echo "folder=." >> $GITHUB_OUTPUT
+          else
+            TOOL_NAME=$(echo "${{ github.ref_name }}" | sed 's/tool\///')
+            echo "folder=tools/$TOOL_NAME" >> $GITHUB_OUTPUT
+          fi
+
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           folder: dist
           branch: gh-pages
-          target-folder: ${{ github.ref_name }}
-          clean: false
+          target-folder: ${{ steps.dest.outputs.folder }}
+          clean: ${{ github.ref_name == 'master' }}
+          clean-exclude: |
+            tools/
