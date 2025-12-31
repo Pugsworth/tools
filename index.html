@@ -36,6 +36,7 @@
       font-size: 3rem;
       margin-bottom: 0.5rem;
       background: linear-gradient(to right, #818cf8, #c084fc);
+      background-clip: text;
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
@@ -91,6 +92,11 @@
       font-size: 0.875rem;
       align-self: flex-start;
     }
+
+    .tag-list {
+      display: flex;
+      gap: 0.5rem;
+    }
   </style>
 </head>
 
@@ -102,28 +108,44 @@
 
   <main class="grid">
     <a href="tools/example-tool/" class="card">
-      <span class="tag">Utility</span>
-      <span class="tag">React</span>
+      <div class="tag-list">
+        <span class="tag">Utility</span>
+        <span class="tag">React</span>
+      </div>
       <h2>Example Tool</h2>
       <p>A simple demonstration of how tools are structured in this repository.</p>
     </a>
     <a href="tools/image-color-extraction/" class="card">
-      <span class="tag">Creative</span>
-      <span class="tag">React</span>
+      <div class="tag-list">
+        <span class="tag">Creative</span>
+        <span class="tag">React</span>
+      </div>
       <h2>Image Color Extraction</h2>
       <p>Extract beautiful color palettes from any image using React.</p>
     </a>
     <a href="tools/perspective-cropper/" class="card">
-      <span class="tag">Utility</span>
-      <span class="tag">React</span>
+      <div class="tag-list">
+        <span class="tag">Utility</span>
+        <span class="tag">React</span>
+      </div>
       <h2>Perspective Cropper</h2>
       <p>Correct perspective distortion and crop images with precision.</p>
     </a>
     <a href="tools/lospec-palette-viewer/" class="card">
-      <span class="tag">Utility</span>
-      <span class="tag">React</span>
+      <div class="tag-list">
+        <span class="tag">Utility</span>
+        <span class="tag">React</span>
+      </div>
       <h2>Lospec Palette Viewer</h2>
       <p>View Lospec palettes in a more user-friendly way.</p>
+    </a>
+    <a href="tools/palette-swapper/" class="card">
+      <div class="tag-list">
+        <span class="tag">Utility</span>
+        <span class="tag">React</span>
+      </div>
+      <h2>Palette Swapper</h2>
+      <p>Swaps colors of an image with a palette.</p>
     </a>
   </main>
 
