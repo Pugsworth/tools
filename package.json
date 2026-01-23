@@ -10,6 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "monaco-editor": "^0.55.1",
+    "monaco-vim": "^0.4.4",
+    "vite-plugin-monaco-editor": "^1.1.0",
     "vue": "^3.5.24"
   },
   "devDependencies": {
