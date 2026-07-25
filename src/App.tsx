@@ -66,6 +66,8 @@ const App = () => {
   const [debugInfo, setDebugInfo] = useState<JSX.Element | null>(null);
   const [urlInput, setUrlInput] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -277,10 +279,10 @@ const App = () => {
           });
         } catch (err) {
           console.error("Failed to parse embedded data", err);
-          loadImage(URL.createObjectURL(file), 'file', false);
+          loadImage(URL.createObjectURL(file), 'file', true);
         }
       } else {
-        loadImage(URL.createObjectURL(file), 'file', false);
+        loadImage(URL.createObjectURL(file), 'file', true);
       }
     };
     reader.readAsArrayBuffer(file);
@@ -632,6 +634,30 @@ const App = () => {
     const file = e.target.files?.[0];
     if (file) processFile(file);
     setMenuOpen(false);
+  };
+
+  const handleImageDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(false);
+
+    const file = Array.from(e.dataTransfer.files).find(candidate => candidate.type.startsWith('image/'));
+    if (!file) {
+      alert('Please drop an image file.');
+      return;
+    }
+
+    if (image) {
+      setPendingImageFile(file);
+    } else {
+      processFile(file);
+    }
+  };
+
+  const replaceImage = (saveProject: boolean) => {
+    if (!pendingImageFile) return;
+    if (saveProject) handleExport();
+    processFile(pendingImageFile);
+    setPendingImageFile(null);
   };
 
   const handleExport = () => {
@@ -1034,6 +1060,23 @@ const App = () => {
         </div>
       )}
 
+      {pendingImageFile && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[55] animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-700 p-6 rounded-xl shadow-2xl max-w-md w-full text-center">
+            <div className="bg-yellow-500/10 p-3 rounded-full inline-block mb-3">
+              <AlertTriangle className="text-yellow-500 w-8 h-8" />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-100 mb-2">Replace current image?</h3>
+            <p className="text-sm text-slate-400 mb-5">Loading <span className="text-slate-200 font-medium">{pendingImageFile.name}</span> will clear the current shapes and links.</p>
+            <div className="flex flex-wrap gap-3 justify-center">
+              <button onClick={() => setPendingImageFile(null)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm font-medium transition-colors">Cancel</button>
+              <button onClick={() => replaceImage(false)} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors">Replace</button>
+              <button onClick={() => replaceImage(true)} className="px-4 py-2 bg-yellow-600 hover:bg-yellow-500 text-white rounded-lg text-sm font-medium transition-colors">Save Project &amp; Replace</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* --- Debug Info Modal --- */}
       {debugInfo && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] animate-in fade-in">
@@ -1100,7 +1143,7 @@ const App = () => {
               <button onClick={() => { setShapes([]); setLinks([]); setMenuOpen(false); }} className="flex items-center gap-2 p-2 hover:bg-red-900/50 text-red-400 rounded text-sm text-left"><Trash2 size={16} /> Clear Canvas</button>
               {image && (
                 <div className="mt-2 p-1">
-                  <input type="text" placeholder="Image URL" className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { loadImage(urlInput, 'url'); setUrlInput(''); setMenuOpen(false); } }} />
+                  <input type="text" placeholder="Image URL" className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { loadImage(urlInput, 'url', true); setUrlInput(''); setMenuOpen(false); } }} />
                 </div>
               )}
             </div>
@@ -1190,7 +1233,16 @@ const App = () => {
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
           onWheel={handleWheel}
+          onDragEnter={(e) => { e.preventDefault(); setIsDragOver(true); }}
+          onDragOver={(e) => e.preventDefault()}
+          onDragLeave={(e) => { if (e.currentTarget === e.target) setIsDragOver(false); }}
+          onDrop={handleImageDrop}
         >
+          {isDragOver && (
+            <div className="absolute inset-4 z-30 pointer-events-none flex items-center justify-center rounded-2xl border-2 border-dashed border-blue-400 bg-blue-500/10 text-blue-200 font-medium">
+              Drop image to load
+            </div>
+          )}
           {!image && (
             <div className="flex flex-col items-center gap-4">
               <div onClick={() => fileInputRef.current.click()} className="text-center p-10 border-2 border-dashed border-slate-800 rounded-3xl cursor-pointer hover:border-slate-600 hover:bg-slate-900/50 transition-all group">
@@ -1201,8 +1253,8 @@ const App = () => {
                 <p className="text-slate-500 mt-2">or drag an image here</p>
               </div>
               <div className="flex gap-2 w-full max-w-sm">
-                <input type="text" placeholder="Or paste an Image URL..." className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-blue-500" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { loadImage(urlInput, 'url'); setUrlInput(''); } }} />
-                <button onClick={() => { loadImage(urlInput, 'url'); setUrlInput(''); }} className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-sm border border-slate-700">Go</button>
+                <input type="text" placeholder="Or paste an Image URL..." className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-blue-500" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { loadImage(urlInput, 'url', true); setUrlInput(''); } }} />
+                <button onClick={() => { loadImage(urlInput, 'url', true); setUrlInput(''); }} className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-sm border border-slate-700">Go</button>
               </div>
             </div>
           )}
