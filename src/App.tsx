@@ -68,6 +68,13 @@ const App = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [curveStep, setCurveStep] = useState<{ id: OpaqueID; phase: 'end' | 'control' } | null>(null);
+  const [mergeByDefault, setMergeByDefault] = useState(false);
+  const [selectionRect, setSelectionRect] = useState<{ start: Point; end: Point } | null>(null);
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectedShapeIds, setSelectedShapeIds] = useState<OpaqueID[]>([]);
+  const [paletteSort, setPaletteSort] = useState<'creation' | 'hue' | 'brightness'>('creation');
+  const [selectedColorHex, setSelectedColorHex] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -164,20 +171,21 @@ const App = () => {
         id, type, x1: startPt.x, y1: startPt.y, x2: startPt.x, y2: startPt.y,
         samples: DEFAULT_SAMPLES, thickness: DEFAULT_THICKNESS,
         radii: Array(DEFAULT_SAMPLES).fill(DEFAULT_THICKNESS / 2),
-        mergeColors: false, variableRadii: false
+        mergeColors: mergeByDefault, variableRadii: false
       };
     } else if (type === 'curve') {
       newShape = {
         id, type, p0: { x: startPt.x, y: startPt.y }, p1: { x: startPt.x, y: startPt.y }, p2: { x: startPt.x, y: startPt.y },
         samples: DEFAULT_SAMPLES, thickness: DEFAULT_THICKNESS,
         radii: Array(DEFAULT_SAMPLES).fill(DEFAULT_THICKNESS / 2),
-        mergeColors: false, variableRadii: false
+        mergeColors: mergeByDefault, variableRadii: false
       };
     } else {
       newShape = { id, type: 'brush', points: [{ x: startPt.x, y: startPt.y }] };
     }
     setShapes(prev => [...prev, newShape]);
     setSelectedShapeId(id);
+    setSelectedShapeIds([id]);
     return id;
   };
 
@@ -218,7 +226,7 @@ const App = () => {
   };
 
   const loadImage = (src: string, type: 'file' | 'url', reset: boolean) => {
-    return new Promise((resolve, reject) => {
+    return new Promise<HTMLImageElement>((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = "Anonymous";
       img.onload = () => {
@@ -288,7 +296,7 @@ const App = () => {
     reader.readAsArrayBuffer(file);
   };
 
-  const restoreFromPatches = (baseImg: HTMLImageElement, patches: Patch[]) => {
+  const restoreFromPatches = (baseImg: HTMLImageElement, patches: Patch[]): Promise<string> => {
     return new Promise((resolve) => {
       const canvas = document.createElement('canvas');
       canvas.width = baseImg.width;
@@ -301,6 +309,11 @@ const App = () => {
         const patchImg = new Image();
         patchImg.onload = () => {
           ctx.drawImage(patchImg, p.x, p.y);
+          loaded++;
+          if (loaded === patches.length) resolve(canvas.toDataURL());
+        };
+        patchImg.onerror = () => {
+          console.warn('Skipping an unreadable Smart Image patch.');
           loaded++;
           if (loaded === patches.length) resolve(canvas.toDataURL());
         };
@@ -412,6 +425,25 @@ const App = () => {
     const target = e.target as HTMLElement;
     const pos = getMousePos(e);
 
+    if (tool === 'curve' && curveStep) {
+      const shape = shapes.find(s => s.id === curveStep.id);
+      if (!shape || shape.type !== 'curve') {
+        setCurveStep(null);
+        return;
+      }
+      if (curveStep.phase === 'end') {
+        updateShape(shape.id, {
+          p2: pos,
+          p1: { x: (shape.p0.x + pos.x) / 2, y: (shape.p0.y + pos.y) / 2 }
+        });
+        setCurveStep({ id: shape.id, phase: 'control' });
+      } else {
+        updateShape(shape.id, { p1: pos });
+        setCurveStep(null);
+      }
+      return;
+    }
+
     if (tool === 'link') {
       const clickedShape = shapes.find((s: Shape) => {
         let cx, cy;
@@ -456,10 +488,19 @@ const App = () => {
       return;
     }
 
-    if (target.dataset.shapeId) {
+    const nearbyShapeId = tool === 'select'
+      ? [...shapes].reverse().find(shape => {
+        const bounds = getShapeBounds(shape, 10 / zoom);
+        return pos.x >= bounds.x && pos.x <= bounds.x + bounds.w && pos.y >= bounds.y && pos.y <= bounds.y + bounds.h;
+      })?.id
+      : undefined;
+    const clickedShapeId = target.dataset.shapeId || nearbyShapeId;
+
+    if (clickedShapeId) {
       if (tool === 'select') {
-        const id = target.dataset.shapeId;
+        const id = clickedShapeId;
         setSelectedShapeId(id);
+        setSelectedShapeIds([id]);
         setIsDragging(true);
         setActiveHandle('move');
         const shape = shapes.find(s => s.id === id);
@@ -475,19 +516,34 @@ const App = () => {
     }
 
     if (tool !== 'select' && tool !== 'link') {
-      createShape(tool, pos);
+      const id = createShape(tool, pos);
+      if (tool === 'curve') {
+        setCurveStep({ id, phase: 'end' });
+        setDragStart({ x: e.clientX, y: e.clientY });
+      }
       setIsDragging(true);
       setActiveHandle('create');
     } else {
       if (target.tagName === 'svg' || target === containerRef.current) {
         setSelectedShapeId(null);
-        setIsPanning(true);
-        setDragStart({ x: e.clientX, y: e.clientY });
+        setSelectedShapeIds([]);
+        if (tool === 'select') {
+          setIsSelecting(true);
+          setSelectionRect({ start: pos, end: pos });
+        } else {
+          setIsPanning(true);
+          setDragStart({ x: e.clientX, y: e.clientY });
+        }
       }
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    if (isSelecting) {
+      const pos = getMousePos(e);
+      setSelectionRect(prev => prev ? { ...prev, end: pos } : null);
+      return;
+    }
     if (isPanning) {
       if (!dragStart) return;
       const dx = e.clientX - dragStart.x;
@@ -517,7 +573,7 @@ const App = () => {
         updateShape(shape.id, { x2: pos.x, y2: pos.y });
       } else if (shape.type === 'curve') {
         const midX = (shape.p0.x + pos.x) / 2;
-        const midY = (shape.p0.y + pos.y) / 2 - 50;
+        const midY = (shape.p0.y + pos.y) / 2;
         updateShape(shape.id, { p2: pos, p1: { x: midX, y: midY } });
       } else if (shape.type === 'brush') {
         updateShape(shape.id, { points: [...shape.points, pos] });
@@ -558,6 +614,12 @@ const App = () => {
           newRadii[idx] = newR;
           updateShape(shape.id, { radii: newRadii });
         }
+      }
+      if (activeHandle === 'thickness' && (shape.type === 'line' || shape.type === 'curve')) {
+        const center = shape.type === 'line'
+          ? { x: shape.x1, y: shape.y1 }
+          : shape.p0;
+        updateShape(shape.id, { thickness: Math.max(1, distance(center, pos) * 2) });
       }
       if (shape.type === 'line') {
         if (activeHandle === 'h1') updateShape(shape.id, { x1: pos.x, y1: pos.y });
@@ -603,6 +665,28 @@ const App = () => {
   };
 
   const handleMouseUp = (e: React.MouseEvent) => {
+    if (isSelecting && selectionRect) {
+      const { x, y, w, h } = normalizeRect(
+        selectionRect.start.x,
+        selectionRect.start.y,
+        selectionRect.end.x - selectionRect.start.x,
+        selectionRect.end.y - selectionRect.start.y
+      );
+      const selectedIds = w < 3 / zoom && h < 3 / zoom
+        ? []
+        : shapes.filter(shape => {
+          const bounds = getShapeBounds(shape);
+          return bounds.x < x + w && bounds.x + bounds.w > x && bounds.y < y + h && bounds.y + bounds.h > y;
+        }).map(shape => shape.id);
+      setSelectedShapeIds(selectedIds);
+      setSelectedShapeId(selectedIds[0] || null);
+      setSelectionRect(null);
+      setIsSelecting(false);
+    }
+    if (tool === 'curve' && activeHandle === 'create' && curveStep?.phase === 'end') {
+      const screenDist = distance({ x: e.clientX, y: e.clientY }, dragStart || { x: e.clientX, y: e.clientY });
+      if (screenDist > 5) setCurveStep(null);
+    }
     if (tool === 'link' && linkStartId) {
       const pos = getMousePos(e);
       const endShape = shapes.find(s => {
@@ -640,7 +724,10 @@ const App = () => {
     e.preventDefault();
     setIsDragOver(false);
 
-    const file = Array.from(e.dataTransfer.files).find(candidate => candidate.type.startsWith('image/'));
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    if (droppedFiles.length === 0) return;
+
+    const file = droppedFiles.find(candidate => candidate.type.startsWith('image/'));
     if (!file) {
       alert('Please drop an image file.');
       return;
@@ -685,21 +772,28 @@ const App = () => {
     // Allow render cycle to complete clearing selection
     setTimeout(() => {
       // 1. Generate Patches
-      const sourceCanvas = document.createElement('canvas');
-      sourceCanvas.width = image.width; sourceCanvas.height = image.height;
-      const sourceCtx = sourceCanvas.getContext('2d') as CanvasRenderingContext2D;
-      sourceCtx.drawImage(image, 0, 0);
-      const patches = shapes.map(shape => {
-        const bounds = getShapeBounds(shape, 10);
-        const x = Math.max(0, bounds.x), y = Math.max(0, bounds.y);
-        const w = Math.min(image.width - x, bounds.w), h = Math.min(image.height - y, bounds.h);
-        if (w <= 0 || h <= 0) return null;
-        const patchData = sourceCtx.getImageData(x, y, w, h) as ImageData;
-        const pCanvas = document.createElement('canvas');
-        pCanvas.width = w; pCanvas.height = h;
-        pCanvas.getContext('2d')?.putImageData(patchData, 0, 0);
-        return { x, y, data: pCanvas.toDataURL('image/png') };
-      }).filter(Boolean);
+      let patches: Patch[];
+      try {
+        const sourceCanvas = document.createElement('canvas');
+        sourceCanvas.width = image.width; sourceCanvas.height = image.height;
+        const sourceCtx = sourceCanvas.getContext('2d') as CanvasRenderingContext2D;
+        sourceCtx.drawImage(image, 0, 0);
+        patches = shapes.map(shape => {
+          const bounds = getShapeBounds(shape, 10);
+          const x = Math.max(0, bounds.x), y = Math.max(0, bounds.y);
+          const w = Math.min(image.width - x, bounds.w), h = Math.min(image.height - y, bounds.h);
+          if (w <= 0 || h <= 0) return null;
+          const patchData = sourceCtx.getImageData(x, y, w, h) as ImageData;
+          const pCanvas = document.createElement('canvas');
+          pCanvas.width = w; pCanvas.height = h;
+          pCanvas.getContext('2d')?.putImageData(patchData, 0, 0);
+          return { x, y, w, h, data: pCanvas.toDataURL('image/png') };
+        }).filter((patch): patch is Patch => patch !== null);
+      } catch (error) {
+        console.error('Could not read image pixels for Smart Image export.', error);
+        alert('Smart Image export requires an uploaded image or an image URL that permits CORS access.');
+        return;
+      }
 
       // 2. Prepare Visual
       const canvas = document.createElement('canvas');
@@ -783,7 +877,13 @@ const App = () => {
       }
       else if (key === 'f') handleFocusShape();
       else if (key === 'tab') { e.preventDefault(); setTool(prev => prev === 'select' ? lastShapeTool : 'select'); }
-      else if (key === 'delete' || key === 'backspace') deleteSelected();
+       else if (key === 'delete' || key === 'backspace') deleteSelected();
+       else if (key === 'm' && selectedShapeId) {
+         const selectedShape = shapes.find(s => s.id === selectedShapeId);
+         if (selectedShape?.type === 'line' || selectedShape?.type === 'curve') {
+           updateShape(selectedShapeId, { mergeColors: !selectedShape.mergeColors });
+         }
+       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -884,8 +984,21 @@ const App = () => {
   }, [shapes, image, canvasVersion, links]);
 
   const globalPalette = useMemo(() => {
-    return customPalette;
-  }, [customPalette]);
+    const colors = [...customPalette];
+    if (paletteSort === 'brightness') {
+      colors.sort((a, b) => (a.r + a.g + a.b) - (b.r + b.g + b.b));
+    } else if (paletteSort === 'hue') {
+      const hue = (color: Color) => {
+        const max = Math.max(color.r, color.g, color.b), min = Math.min(color.r, color.g, color.b);
+        if (max === min) return -1;
+        const delta = max - min;
+        const raw = max === color.r ? (color.g - color.b) / delta : max === color.g ? 2 + (color.b - color.r) / delta : 4 + (color.r - color.g) / delta;
+        return (raw * 60 + 360) % 360;
+      };
+      colors.sort((a, b) => hue(a) - hue(b));
+    }
+    return colors;
+  }, [customPalette, paletteSort]);
 
   // --- Render Functions (Defined inside App) ---
 
@@ -909,8 +1022,8 @@ const App = () => {
     });
   };
 
-  const renderShape = (shape: Shape, isSelected: boolean) => {
-    const strokeColor = isSelected ? '#3b82f6' : 'white';
+  const renderShape = (shape: Shape, isSelected: boolean, isHighlighted = false) => {
+    const strokeColor = isSelected ? '#3b82f6' : isHighlighted ? '#facc15' : 'white';
     const strokeWidth = 2 / zoom;
     const handleR = 6 / zoom;
 
@@ -1007,6 +1120,12 @@ const App = () => {
                   <circle cx={shape.p0.x} cy={shape.p0.y} r={handleR} fill="#3b82f6" data-handle="p0" className="cursor-move" />
                   <circle cx={shape.p1.x} cy={shape.p1.y} r={handleR} fill="#10b981" data-handle="p1" className="cursor-move" />
                   <circle cx={shape.p2.x} cy={shape.p2.y} r={handleR} fill="#3b82f6" data-handle="p2" className="cursor-move" />
+                </>
+              )}
+              {!shape.variableRadii && (
+                <>
+                  <line x1={points[0].x} y1={points[0].y} x2={points[0].x + shape.thickness / 2} y2={points[0].y} stroke="#3b82f6" strokeWidth={1 / zoom} strokeDasharray="2,2" />
+                  <circle cx={points[0].x + shape.thickness / 2} cy={points[0].y} r={handleR} fill="#fff" stroke="#3b82f6" strokeWidth={strokeWidth} data-handle="thickness" className="cursor-ew-resize" />
                 </>
               )}
               {shape.variableRadii && renderVariableRadiiHandles(points, shape)}
@@ -1157,6 +1276,12 @@ const App = () => {
         <ToolButton active={tool === 'line'} icon={Minus} onClick={() => setTool('line')} label="Line Path" shortcut="L" />
         <ToolButton active={tool === 'curve'} icon={Spline} onClick={() => setTool('curve')} label="Curve Path" shortcut="U" />
         <ToolButton active={tool === 'brush'} icon={Brush} onClick={() => setTool('brush')} label="Freehand Region" shortcut="H" />
+        {(lastShapeTool === 'line' || lastShapeTool === 'curve') && (
+          <label className="mt-1 flex flex-col items-center gap-1 text-[10px] text-slate-400 cursor-pointer" title="New lines and curves will merge their samples into one color">
+            <input type="checkbox" checked={mergeByDefault} onChange={(e) => setMergeByDefault(e.target.checked)} className="accent-blue-500" />
+            Merge default
+          </label>
+        )}
         <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
         <input ref={importInputRef} type="file" accept=".json" onChange={handleImport} className="hidden" />
         <input ref={debugInputRef} type="file" accept="image/*" onChange={handleDebugImage} className="hidden" />
@@ -1236,6 +1361,7 @@ const App = () => {
           onDragEnter={(e) => { e.preventDefault(); setIsDragOver(true); }}
           onDragOver={(e) => e.preventDefault()}
           onDragLeave={(e) => { if (e.currentTarget === e.target) setIsDragOver(false); }}
+          onDragStart={(e) => e.preventDefault()}
           onDrop={handleImageDrop}
         >
           {isDragOver && (
@@ -1263,7 +1389,16 @@ const App = () => {
               <img src={image.src} className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none" alt="Workplace" />
               <svg ref={svgRef} className="absolute inset-0 w-full h-full overflow-visible" viewBox={`0 0 ${image.width} ${image.height}`} preserveAspectRatio="none">
                 {renderLinks()}
-                {shapes.map((s: Shape) => renderShape(s, s.id === selectedShapeId))}
+                {shapes.map((s: Shape) => renderShape(s, s.id === selectedShapeId, selectedShapeIds.includes(s.id)))}
+                {selectionRect && (() => {
+                  const { x, y, w, h } = normalizeRect(
+                    selectionRect.start.x,
+                    selectionRect.start.y,
+                    selectionRect.end.x - selectionRect.start.x,
+                    selectionRect.end.y - selectionRect.start.y
+                  );
+                  return <rect x={x} y={y} width={w} height={h} fill="rgba(59,130,246,0.12)" stroke="#3b82f6" strokeWidth={1 / zoom} strokeDasharray="4,4" pointerEvents="none" />;
+                })()}
                 {tool === 'link' && linkStartId && linkCurrentPos && (
                   <line
                     x1={(() => {
@@ -1307,11 +1442,34 @@ const App = () => {
               <p className="text-xs text-slate-600 mt-1">Use tools to sample the image.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-4 auto-rows-min">
+            <>
+              <label className="mb-4 flex items-center gap-2 text-xs text-slate-400">
+                Sort
+                <select value={paletteSort} onChange={(e) => setPaletteSort(e.target.value as 'creation' | 'hue' | 'brightness')} className="ml-auto bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200">
+                  <option value="creation">Creation</option>
+                  <option value="hue">Hue</option>
+                  <option value="brightness">Brightness</option>
+                </select>
+              </label>
+              <div className="grid grid-cols-3 gap-4 auto-rows-min">
               {globalPalette.map((item: Color, idx: number) => (
-                <ColorSwatch key={idx} color={item} isHighlighted={item.shapeIds && item.shapeIds.includes(selectedShapeId)} />
+                <ColorSwatch
+                  key={`${rgbToHex(item.r, item.g, item.b)}-${idx}`}
+                  color={item}
+                  isHighlighted={Boolean(item.shapeIds?.includes(selectedShapeId || ''))}
+                  isSelected={selectedColorHex === rgbToHex(item.r, item.g, item.b)}
+                  onSelect={() => {
+                    const hex = rgbToHex(item.r, item.g, item.b);
+                    const nextColor = selectedColorHex === hex ? null : hex;
+                    setSelectedColorHex(nextColor);
+                    const shapeIds = nextColor ? (item.shapeIds || []) : [];
+                    setSelectedShapeIds(shapeIds);
+                    setSelectedShapeId(shapeIds[0] || null);
+                  }}
+                />
               ))}
-            </div>
+              </div>
+            </>
           )}
         </div>
         <div className="p-4 border-t border-slate-800 flex flex-col gap-2">
